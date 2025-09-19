@@ -1,0 +1,2 @@
+If your neural network fails and outputs all zeroes, try setting the bias
+to a non 0 value.

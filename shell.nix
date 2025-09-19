@@ -11,3 +11,4 @@ pkgs.mkShell {
     source .venv/bin/activate
   '';
 }
+# pip install nnfs

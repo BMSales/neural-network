@@ -79,7 +79,7 @@ class Activation_Softmax_LossCategoricalCrossEntropy():
         self.activation.forward(inputs)
         self.output = self.activation.output
         return self.loss.calculate(self.output, y_true)
-    
+
     def backward(self, dvalues, y_true):
         samples = len(dvalues)
 
@@ -91,12 +91,38 @@ class Activation_Softmax_LossCategoricalCrossEntropy():
         self.dinputs = self.dinputs/samples
 
 class Optimizer_SGD:
-    def __init__(self, learning_rate=1.0):
+    def __init__(self, learning_rate=1.0, decay = 0., momentum=0.):
         self.learning_rate = learning_rate
+        self.current_learning_rate = learning_rate
+        self.decay = decay
+        self.iterations = 0
+        self.momentum = momentum
+
+    def pre_update_params(self):
+        if self.decay:
+            self.current_learning_rate = self.learning_rate * (1. / (1. + self.decay * self.iterations))
 
     def update_params(self, layer):
-        layer.weights += -self.learning_rate * layer.dweights
-        layer.biases += -self.learning_rate * layer.dbiases
+        if self.momentum:
+            if not hasattr(layer, 'weight_momentums'):
+                layer.weight_momentums = np.zeros_like(layer.weights)
+                layer.bias_momentums = np.zeros_like(layer.biases)
+
+            weight_updates = self.momentum * layer.weight_momentums - self.current_learning_rate * layer.dweights
+            layer.weight_momentums = weight_updates
+
+            bias_updates = self.momentum * layer.bias_momentums - self.current_learning_rate * layer.dbiases
+            layer.bias_momentums = bias_updates
+        else:
+            weight_updates += -self.current_learning_rate * layer.dweights
+            bias_updates += -self.current_learning_rate * layer.dbiases
+
+        layer.weights += weight_updates
+        layer.biases += bias_updates
+
+    def post_update_params(self):
+        self.iterations += 1
+
 
 X, y = spiral_data(100, 3)
 
@@ -106,7 +132,7 @@ activation1 = Activate_ReLU()
 dense2 = Layer_Dense(64, 3)
 loss_activation = Activation_Softmax_LossCategoricalCrossEntropy()
 
-optimizer = Optimizer_SGD(learning_rate=.85)
+optimizer = Optimizer_SGD(decay=1e-3, momentum=0.79)
 
 for epoch in range(10001):
     dense1.forward(X)
@@ -115,23 +141,23 @@ for epoch in range(10001):
 
     loss = loss_activation.forward(dense2.output, y)
 
-    # print('loss:', loss)
-
     predictions = np.argmax(loss_activation.output, axis=1)
     if len(y.shape) == 2:
         y = np.argmax(y, axis=1)
     accuracy = np.mean(predictions == y)
 
-    # print('acc:', accuracy)
     if not epoch % 100:
         print(f'epoch: {epoch}, ' +
               f'acc: {accuracy:.3f}, ' +
-              f'loss: {loss:.3f}')
+              f'loss: {loss:.3f}, ' +
+              f'lr: {optimizer.current_learning_rate}')
 
     loss_activation.backward(loss_activation.output, y)
     dense2.backward(loss_activation.dinputs)
     activation1.backward(dense2.dinputs)
     dense1.backward(activation1.dinputs)
 
+    optimizer.pre_update_params()
     optimizer.update_params(dense1)
     optimizer.update_params(dense2)
+    optimizer.post_update_params()
